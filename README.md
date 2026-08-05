@@ -1,6 +1,6 @@
 # EKS Setup
 
-## EKS Entry - Auto
+## EKS Entry - Automatic 
 ```shell
 USER_ARN=$(aws sts get-caller-identity --query "Arn" --output text)
 REGION_CODE="<REGION_CODE>"
