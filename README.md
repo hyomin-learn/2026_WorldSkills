@@ -1,3 +1,14 @@
+# Infra Setup
+```shell
+terraform init
+```
+
+```shell
+terraform apply --auto-approve
+```
+
+---
+
 # EKS Setup
 
 ## EKS Entry - Automatic 
