@@ -1,0 +1,49 @@
+adminUser: admin
+adminPassword: Skills$#$@!
+
+nodeSelector:
+  wsc2026/node: addon
+
+service:
+  type: LoadBalancer
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+
+sidecar:
+  dashboards:
+    enabled: true
+    label: grafana_dashboard
+    labelValue: "wsc2026"
+    watchMethod: WATCH
+
+grafana.ini:
+  server:
+    root_url: "%(protocol)s://%(domain)s:%(http_port)s/"
+
+serviceAccount:
+  create: false
+  name: "wsc2026-grafana-sa"
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: prometheus
+        type: prometheus
+        url: http://prometheus-server.observability.svc.wsc2026.skills.local
+        access: proxy
+        isDefault: true
+      - name: alertmanager
+        type: alertmanager
+        url: http://prometheus-alertmanager.observability.svc.wsc2026.skills.local:9093
+        access: proxy
+        jsonData:
+          implementation: prometheus
+      - name: cloudwatch
+        type: cloudwatch
+        access: proxy
+        isDefault: false
+        jsonData:
+          authType: default
+          defaultRegion: ap-northeast-2

@@ -1,0 +1,80 @@
+# Node CPU (%)
+## ALL Node CPU
+Query: 100 - (avg by(node) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+
+## Node Memory (%)
+Query: avg by(node) (100 * (1 - ((avg_over_time(node_memory_MemFree_bytes[5m]) + avg_over_time(node_memory_Cached_bytes[5m]) + avg_over_time(node_memory_Buffers_bytes[5m])) / avg_over_time(node_memory_MemTotal_bytes[5m]))))
+
+## Available Nodes
+Query: sum by (label_eks_amazonaws_com_nodegroup) (kube_node_status_condition{condition="Ready", status="true"} * on(node) group_left(label_eks_amazonaws_com_nodegroup) kube_node_labels)
+Legend: {{label_eks_amazonaws_com_nodegroup}}
+
+---
+# Pod
+## ALL Pod CPU
+Query: sum by (pod) (rate(container_cpu_usage_seconds_total{image!=""}[5m]))
+Legend: {{pod}}
+
+## ALL Pod Memory
+Query: sum by (pod) (container_memory_working_set_bytes{image!=""})
+Legend: {{pod}}
+
+## ALL Pending Pods
+Query: sum(kube_pod_status_phase{phase="Pending"})
+
+## ALL Pod Restarts
+Query: sum by (pod) (rate(kube_pod_container_status_restarts_total[5m]))
+
+---
+# Application Pod
+## App Pod CPU
+Query: sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="wsc2026", image!=""}[5m]))
+
+## App Pod Memory
+Query: sum by (pod) (container_memory_working_set_bytes{namespace="wsc2026", image!=""})
+
+## App Running
+Query: sum(kube_pod_status_phase{namespace="wsc2026", phase="Running"})
+
+## App restarts
+Query: sum by (pod) (rate(kube_pod_container_status_restarts_total{namespace="wsc2026"}[5m]))
+
+## App Pending
+Query: sum(kube_pod_status_phase{namespace="wsc2026", phase="Pending"})
+
+---
+# Application Traffic
+## App Request Count
+Query:
+A: SELECT SUM("app/RequestCount") FROM "wsc2026-metrics"
+B: FILL(m1, 0)
+B Label: Requests/min
+
+## App Response Time
+Query:
+fields @timestamp, duration, method, path, status
+| filter method = "POST" and path = "/v1/book"
+| parse duration /(?<duration_ms>[0-9.]+)ms/
+| stats avg(duration_ms) as avg_response_time_ms by bin(1m)
+
+## App Status Code
+Query:
+A:
+fields @timestamp, status, startsWith(status, "2") as is_2xx, startsWith(status, "4") as is_4xx, startsWith(status, "5") as is_5xx
+| filter ispresent(status)
+| stats sum(is_2xx) as `2XX`, sum(is_4xx) as `4XX`, sum(is_5xx) as `5XX` by bin(1m)
+
+B:
+Namespace: AWS/ApplicationELB
+Metrics Name: HTTPCode_ELB_4XX_Count
+Statistic: Sum
+
+C:
+Namespace: AWS/ApplicationELB
+Metrics Name: HTTPCode_ELB_5XX_Count
+Statistic: Sum
+
+## App Application Logs
+Query: 
+fields @timestamp, @message, level
+| sort @timestamp desc

@@ -1,0 +1,104 @@
+server:
+  retention: "7d"
+
+  nodeSelector:
+    wsc2026/node: addon
+
+alertmanager:
+  enabled: true
+
+  nodeSelector:
+    wsc2026/node: addon
+
+prometheus-pushgateway:
+  enabled: false
+
+kube-state-metrics:
+  enabled: true
+
+  nodeSelector:
+    wsc2026/node: addon
+
+  metricLabelsAllowlist:
+    - nodes=[*]
+
+configmapReload:
+  prometheus:
+    enabled: true
+
+prometheus-node-exporter:
+  enabled: true
+
+scrapeConfigs:
+  prometheus:
+    enabled: true
+    metrics_path: '/metrics'
+    static_configs:
+      - targets:
+          - localhost:9090
+
+extraScrapeConfigs: |
+  - job_name: 'fluent-bit'
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_namespace]
+        action: keep
+        regex: observability
+      
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: fluent-bit
+      
+      - source_labels: [__address__]
+        action: replace
+        regex: ([^:]+)(?::\d+)?
+        target_label: __address__
+        replacement: $1:2021
+
+serverFiles:
+  alerts:
+    groups:
+      - name: wsc2026-alerts
+        rules:
+          - alert: PodHighCPU
+            expr: |
+              sum(rate(container_cpu_usage_seconds_total{image!="", container!="POD"}[3m])) by (pod, namespace) / sum(kube_pod_container_resource_limits{resource="cpu"}) by (pod, namespace) * 100 > 80
+            for: 3m
+            labels:
+              severity: warning
+
+          - alert: PodHighMemory
+            expr: |
+              sum(container_memory_working_set_bytes{image!="", container!="POD"}) by (pod, namespace) / sum(kube_pod_container_resource_limits{resource="memory"}) by (pod, namespace) * 100 > 90
+            for: 3m
+            labels:
+              severity: warning
+
+          - alert: PodNotReady
+            expr: |
+              kube_pod_status_phase{phase=~"Failed|Unknown|Pending"} > 0 or kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff"} > 0 or kube_pod_status_ready{condition="false"} > 0
+            for: 3m
+            labels:
+              severity: critical
+
+          - alert: HighErrorRate
+            expr: |
+              (sum(log_metric_counter_app_requests_total{status_class=~"4xx|5xx"}) / sum(log_metric_counter_app_requests_total)) * 100 > 5
+            for: 1m
+            labels:
+              severity: critical
+
+          - alert: HighLatency
+            expr: |
+              (sum(log_metric_histogram_app_request_duration_seconds_sum{path="/delay"})) / sum(log_metric_histogram_app_request_duration_seconds_count{path="/delay"}) > 3
+            for: 1m
+            labels:
+              severity: warning
+
+          - alert: PodCrashLooping
+            expr: |
+              kube_pod_container_status_restarts_total{namespace="wsc2026"} > 3
+            for: 3m
+            labels:
+              severity: critical

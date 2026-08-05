@@ -1,0 +1,13 @@
+image:
+  repository: 602401143452.dkr.ecr.ap-northeast-2.amazonaws.com/amazon/aws-load-balancer-controller
+
+serviceAccount:
+  create: false
+  name: aws-load-balancer-controller
+
+nodeSelector:
+  unicorn: addon
+
+enableShield: false
+enableWaf: false
+enableWafv2: false

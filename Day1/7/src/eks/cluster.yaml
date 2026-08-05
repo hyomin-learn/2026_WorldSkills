@@ -1,0 +1,73 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: unicorn-eks-cluster
+  version: "1.35"
+  region: ap-northeast-2
+
+secretsEncryption:
+  keyARN: KMS_KEY_ID
+
+cloudWatch:
+  clusterLogging:
+    enableTypes: ["*"]
+
+iam:
+  withOIDC: true
+  serviceAccounts:
+  - metadata:
+      name: aws-load-balancer-controller
+      namespace: kube-system
+    wellKnownPolicies:
+      awsLoadBalancerController: true
+  - metadata:
+      name: cert-manager
+      namespace: cert-manager
+    wellKnownPolicies:
+      certManager: true
+
+vpc:
+  securityGroup: SECURITY_GROUP_ID
+  subnets:
+    private:
+      ap-northeast-2a: { id: PRIVATE_A }
+      ap-northeast-2b: { id: PRIVATE_B }
+      ap-northeast-2c: { id: PRIVATE_C }
+  clusterEndpoints:
+    publicAccess: false
+    privateAccess: true
+
+accessConfig:
+  authenticationMode: API
+
+managedNodeGroups:
+  - name: unicorn-k8snode-app-ng
+    labels: { unicorn: app }
+    instanceName: unicorn-k8snode-app-node
+    instanceType: t3.medium
+    desiredCapacity: 2
+    minSize: 2
+    maxSize: 20
+    privateNetworking: true
+    amiFamily: AmazonLinux2023
+    volumeEncrypted: true
+    volumeKmsKeyID: KMS_KEY_ID
+    preBootstrapCommands:
+    - |
+      timedatectl set-timezone Asia/Soul
+
+  - name: unicorn-k8snode-addon-ng
+    labels: { unicorn: addon }
+    instanceName: unicorn-k8snode-addon-node
+    instanceType: t3.medium
+    desiredCapacity: 2
+    minSize: 2
+    maxSize: 20
+    privateNetworking: true
+    amiFamily: AmazonLinux2023
+    volumeEncrypted: true
+    volumeKmsKeyID: KMS_KEY_ID
+    preBootstrapCommands:
+    - |
+      timedatectl set-timezone Asia/Soul

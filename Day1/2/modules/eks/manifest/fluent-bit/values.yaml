@@ -1,0 +1,47 @@
+# eks/aws-for-fluent-bit 차트. 모든 노드(addon/app)에서 컨테이너 로그를 수집해야 하므로
+# 두 노드그룹의 taint 를 모두 허용(tolerations)한다.
+serviceAccount:
+  create: false
+  name: aws-for-fluent-bit
+
+tolerations:
+  - operator: Exists
+
+input:
+  enabled: true
+  tag: kube.*
+  path: /var/log/containers/*.log
+  db: /var/log/flb_kube.db
+  multilineParser: cri
+  memBufLimit: 50MB
+  skipLongLines: "On"
+  refreshInterval: 10
+
+filter:
+  enabled: true
+
+cloudWatch:
+  enabled: false
+
+cloudWatchLogs:
+  enabled: true
+  match: "kube.*"
+  region: ap-northeast-2
+  logGroupName: /eks/wskorea26-cluster/pods
+  logStreamPrefix: "from-fluentbit-"
+  autoCreateGroup: "true"
+
+volumes:
+  - name: varlog
+    hostPath:
+      path: /var/log
+  - name: varlibdockercontainers
+    hostPath:
+      path: /var/lib/docker/containers
+
+volumeMounts:
+  - name: varlog
+    mountPath: /var/log
+  - name: varlibdockercontainers
+    mountPath: /var/lib/docker/containers
+    readOnly: true

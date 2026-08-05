@@ -1,0 +1,118 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  namespace: logging
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush               1
+        Grace               5
+        Daemon              off
+        Log_Level           info
+        Parsers_File        /fluent-bit/etc/parsers.conf
+
+    [INPUT]
+        Name                tail
+        Path                /var/log/containers/*unicorn-book-app*.log
+        Parser              cri
+        Tag                 kube.*
+        Refresh_Interval    10
+        Mem_Buf_Limit       50M
+
+    [FILTER]
+        Name                grep
+        Match               kube.*
+        Exclude             log .*path=/health.*
+
+    [FILTER]
+        Name                parser
+        Match               kube.*
+        Key_Name            log
+        Parser              access_log
+        Reserve_Data        On
+
+    [FILTER]
+        Name                log_to_metrics
+        Match               kube.*
+        tag                 prometheus_metrics
+        metric_mode         histogram
+        metric_name         http_request_duration_seconds
+        metric_description  HTTP request duration in seconds
+        value_field         duration
+        bucket              0.1
+        bucket              0.2
+        bucket              0.3
+        bucket              0.4
+        bucket              0.5
+        bucket              1.0
+        bucket              2.0
+        bucket              3.0
+        bucket              4.0
+        bucket              5.0
+        bucket              10.0
+        bucket              15.0
+        bucket              20.0
+        bucket              30.0
+        bucket              40.0
+        bucket              50.0
+
+    [FILTER]
+        Name                lua
+        Match               kube.*
+        script              /fluent-bit/etc/format.lua
+        call                format_timestamp
+
+    [FILTER]
+        Name                grep
+        Match               kube.*
+        Regex               method .*
+
+    [OUTPUT]
+        Name                cloudwatch_logs
+        Match               kube.*
+        region              ap-northeast-2
+        Log_Group_Name      /unicorn/eks/book-app
+        Log_Stream_Name     /unicorn/eks/book-app/stream
+        Auto_Create_Group   off
+
+    [OUTPUT]
+        Name                prometheus_exporter
+        Match               prometheus_metrics
+        Host                0.0.0.0
+        Port                2021
+
+  parsers.conf: |
+    [PARSER]
+        Name                cri
+        Format              regex
+        Regex               ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$
+        Time_Key            time
+        Time_Format         %Y-%m-%dT%H:%M:%S.%L%z
+
+    [PARSER]
+        Name                access_log
+        Format              regex
+        Regex               ^(?<timestamp>\d{4}\/\d{2}\/\d{2} \d{2}\:\d{2}\:\d{2}) access method=(?<method>[^ ]+) path=(?<path>[^ ]+) status=(?<status_code>\d+) duration=(?<duration>[^ ]+) remote_addr=(?<client_ip>[^ ]+):(?<port>[^ ]+) user_agent="(?<user_agent>[^"]+)"
+        Time_Key            timestamp
+        Time_Format         %Y/%m/%d %H:%M:%S
+        Time_Keep           On
+        Types               status_code:integer duration:float
+
+  format.lua: |
+    function format_timestamp(tag, timestamp, record)
+        local t = record["timestamp"]
+        local new_t = t
+        if t ~= nil then
+            new_t = string.gsub(t, "(%d+)/(%d+)/(%d+) (%d+):(%d+):(%d+)", "%1-%2-%3T%4:%5:%6Z")
+        end
+
+        local ordered_record = {}
+        ordered_record["timestamp"] = new_t
+        ordered_record["method"] = record["method"]
+        ordered_record["path"] = record["path"]
+        ordered_record["status_code"] = record["status_code"]
+        ordered_record["client_ip"] = record["client_ip"]
+        
+        return 1, timestamp, ordered_record
+    end

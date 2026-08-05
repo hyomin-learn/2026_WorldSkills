@@ -1,0 +1,59 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: wsc2026-eks-cluster
+  version: "1.35"
+  region: ap-northeast-2
+
+secretsEncryption:
+  keyARN: EKS_KMS_KEY_ARN
+
+cloudWatch:
+  clusterLogging:
+    enableTypes: ["*"]
+
+iam:
+  withOIDC: true
+  serviceAccounts:
+  - metadata:
+      name: aws-load-balancer-controller
+      namespace: kube-system
+    wellKnownPolicies:
+      awsLoadBalancerController: true
+  - metadata:
+      name: cert-manager
+      namespace: cert-manager
+    wellKnownPolicies:
+      certManager: true
+
+vpc:
+  securityGroup: SECURITY_GROUP_ID
+  subnets:
+    private:
+      ap-northeast-2a: { id: PRIVATE_A }
+      ap-northeast-2b: { id: PRIVATE_B }
+  clusterEndpoints:
+    publicAccess: false
+    privateAccess: true
+      
+managedNodeGroups:
+  - name: wsc2026-workload-ng
+    labels: { wsc2026/node: application }
+    instanceName: wsc2026-workload-node
+    instanceType: t3.medium
+    desiredCapacity: 2
+    minSize: 2
+    maxSize: 20
+    privateNetworking: true
+    amiFamily: AmazonLinux2023
+
+  - name: wsc2026-addon-nodegroup
+    labels: { wsc2026/node: addon }
+    instanceName: wsc2026-addon-node
+    instanceType: t3.medium
+    desiredCapacity: 2
+    minSize: 2
+    maxSize: 20
+    privateNetworking: true
+    amiFamily: AmazonLinux2023

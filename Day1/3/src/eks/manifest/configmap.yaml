@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: book-config
+  namespace: wsc2026
+data:
+  AWS_REGION: ap-northeast-2
+  TABLE_NAME: wsc2026-book-table
