@@ -1,0 +1,64 @@
+# 2. Log Producer Application  (Namespace: o11y)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: log-generator
+  namespace: o11y
+  labels: { app: log-generator }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: log-generator }
+  template:
+    metadata:
+      labels: { app: log-generator }
+    spec:
+      containers:
+        - name: app
+          # deploy.sh 가 ECR_URL 로 치환합니다.
+          image: __ECR_URL__:latest
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: log-generator
+  namespace: o11y
+spec:
+  type: ClusterIP
+  selector: { app: log-generator }
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+# ALB(o11y-app-alb) / TG(o11y-app-tg) 는 Terraform 이 이름을 고정해 생성합니다.
+# 여기서는 파드 IP 를 그 TG 에 등록만 합니다 (LBC 의 TargetGroupBinding CRD).
+# deploy.sh 가 __APP_TG_ARN__ / __ALB_SG_ID__ 를 치환합니다.
+apiVersion: elbv2.k8s.aws/v1beta1
+kind: TargetGroupBinding
+metadata:
+  name: log-generator
+  namespace: o11y
+spec:
+  serviceRef:
+    name: log-generator
+    port: 8080
+  targetGroupARN: __APP_TG_ARN__
+  targetType: ip
+  networking:
+    ingress:
+      - from:
+          - securityGroup:
+              groupID: __ALB_SG_ID__
+        ports:
+          - protocol: TCP
+            port: 8080

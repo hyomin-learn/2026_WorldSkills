@@ -1,0 +1,22 @@
+# Grafana 파드를 Terraform 이 만든 o11y-grafana-tg 에 등록합니다.
+# deploy.sh 가 __GRAFANA_TG_ARN__ / __ALB_SG_ID__ 를 치환합니다.
+# (Service port 80 -> targetPort 3000 이므로 실제 등록 대상은 podIP:3000)
+apiVersion: elbv2.k8s.aws/v1beta1
+kind: TargetGroupBinding
+metadata:
+  name: o11y-grafana
+  namespace: monitoring
+spec:
+  serviceRef:
+    name: o11y-grafana
+    port: 80
+  targetGroupARN: __GRAFANA_TG_ARN__
+  targetType: ip
+  networking:
+    ingress:
+      - from:
+          - securityGroup:
+              groupID: __ALB_SG_ID__
+        ports:
+          - protocol: TCP
+            port: 3000

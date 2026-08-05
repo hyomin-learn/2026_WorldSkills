@@ -1,0 +1,367 @@
+#!/bin/bash
+REGION_CODE="ap-northeast-2"
+
+dnf update -y
+dnf install --allowerasing -y jq curl wget unzip vim dos2unix docker
+systemctl start docker
+systemctl enable docker
+
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+./aws/install
+rm -rf awscliv2.zip aws/
+
+dnf install -y https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm
+sed -i 's|PasswordAuthentication no|PasswordAuthentication yes|g' /etc/ssh/sshd_config
+systemctl restart sshd
+echo 'Skill53##' | passwd --stdin ec2-user
+echo 'Skill53##' | passwd --stdin root
+
+curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+mv /tmp/eksctl /usr/local/bin
+
+curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.35.2/2026-02-27/bin/linux/amd64/kubectl
+chmod +x kubectl
+mv kubectl /usr/local/bin
+
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+chmod 700 get_helm.sh
+./get_helm.sh
+rm -rf get_helm.sh
+
+mkdir k9s && cd k9s/
+curl -LO https://github.com/derailed/k9s/releases/download/v0.32.5/k9s_Linux_amd64.tar.gz
+tar -xf k9s_Linux_amd64.tar.gz
+chmod +x k9s
+sudo mv k9s /usr/local/bin
+cd ..
+rm -rf k9s
+
+chown -R ec2-user:ec2-user /home/ec2-user/
+mkdir -p /home/ec2-user/eks/manifest
+mkdir -p /home/ec2-user/src/app
+
+cat << 'EOF' > /home/ec2-user/eks/cluster.yaml
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata:
+  name: skm-eks-cluster
+  region: ap-northeast-2
+  version: "1.35"
+  tags:
+    karpenter.sh/discovery: skm-eks-cluster
+cloudWatch:
+  clusterLogging:
+    enableTypes: ["*"]
+iam:
+  withOIDC: true
+karpenter:
+  version: '1.9.1'
+  createServiceAccount: true
+vpc:
+  id: VPC_ID_PLACEHOLDER
+  subnets:
+    private:
+      ap-northeast-2a: { id: PRIVATE_A }
+      ap-northeast-2c: { id: PRIVATE_C }
+managedNodeGroups:
+  - name: skm-cluster-addon-ng
+    labels:
+      skm-cluster-addon-ng-node: "true"
+    instanceName: skm-cluster-addon-ng-node
+    instanceType: t3.medium
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 1
+    privateNetworking: true
+    amiFamily: AmazonLinux2023
+EOF
+
+cat << 'EOF' > /home/ec2-user/src/app/requirements.txt
+boto3>=1.35.0
+flask>=3.0.0
+EOF
+
+cat << 'EOF' > /home/ec2-user/src/app/Dockerfile
+FROM python:3.13-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY app.py .
+EXPOSE 8080
+ENV PYTHONUNBUFFERED=1
+CMD ["python", "app.py"]
+EOF
+
+cat << 'EOF' > /home/ec2-user/src/app/app.py
+import os
+import threading
+import time
+import boto3
+from flask import Flask, jsonify
+
+app = Flask(__name__)
+AWS_REGION = os.environ.get("AWS_REGION", "ap-northeast-2")
+SQS_QUEUE_URL = os.environ.get("SQS_QUEUE_URL", "")
+PROCESSING_TIME = float(os.environ.get("PROCESSING_TIME", "3"))
+sqs = boto3.client("sqs", region_name=AWS_REGION)
+_processed = 0
+_lock = threading.Lock()
+_stop = threading.Event()
+
+def _consumer_loop() -> None:
+    global _processed
+    while not _stop.is_set():
+        if not SQS_QUEUE_URL:
+            time.sleep(1)
+            continue
+        try:
+            response = sqs.receive_message(
+                QueueUrl=SQS_QUEUE_URL,
+                MaxNumberOfMessages=10,
+                WaitTimeSeconds=20,
+            )
+        except Exception:
+            time.sleep(1)
+            continue
+        for message in response.get("Messages", []):
+            message_id = message["MessageId"]
+            body = message.get("Body", "")
+            time.sleep(PROCESSING_TIME)
+            try:
+                sqs.delete_message(
+                    QueueUrl=SQS_QUEUE_URL,
+                    ReceiptHandle=message["ReceiptHandle"],
+                )
+                with _lock:
+                    _processed += 1
+                print(f"processed message_id={message_id} body={body}", flush=True)
+            except Exception as exc:
+                print(f"failed message_id={message_id} error={exc}", flush=True)
+
+@app.route("/healthz", methods=["GET"])
+def healthz():
+    return jsonify({"status": "ok"}), 200
+
+@app.route("/status", methods=["GET"])
+def status():
+    with _lock:
+        count = _processed
+    return jsonify({"processed": count, "queue_url": SQS_QUEUE_URL}), 200
+
+if __name__ == "__main__":
+    threading.Thread(target=_consumer_loop, daemon=True).start()
+    app.run(host="0.0.0.0", port=8080)
+EOF
+
+cat << 'EOF' > /home/ec2-user/eks/manifest/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-processor
+  namespace: skillsmkt
+spec:
+  replicas: 1 
+  selector:
+    matchLabels:
+      app: order-processor
+  template:
+    metadata:
+      labels:
+        app: order-processor
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: karpenter.sh/nodepool
+                    operator: In
+                    values:
+                      - skm-app-nodepool
+      tolerations:
+        - key: "workload"
+          operator: "Equal"
+          value: "app"
+          effect: "NoSchedule"
+      containers:
+        - name: order-processor
+          image: INITIAL_IMAGE_PLACEHOLDER
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          env:
+            - name: AWS_REGION
+              value: "ap-northeast-2"
+            - name: SQS_QUEUE_URL
+              value: "SQS_QUEUE_URL_PLACEHOLDER"
+            - name: PROCESSING_TIME
+              value: "3"
+EOF
+
+cat << 'EOF' > /home/ec2-user/eks/manifest/karpenter.yaml
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: skm-app-nodepool
+spec:
+  template:
+    spec:
+      taints:
+        - key: workload
+          value: app
+          effect: NoSchedule
+      requirements:
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values: ["t3.small", "t3.medium"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["on-demand", "spot"]
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: skm-app-nodeclass        
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 60s
+---
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: skm-app-nodeclass
+spec:
+  amiFamily: AL2023  
+  amiSelectorTerms:
+    - alias: al2023@latest    
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "skm-eks-cluster"
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "skm-eks-cluster"
+  role: "KARPENTER_ROLE_NAME"
+EOF
+
+cat << 'EOF' > /home/ec2-user/eks/manifest/scaledobject.yaml
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: order-scaler
+  namespace: skillsmkt
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: order-processor
+  minReplicaCount: 1
+  maxReplicaCount: 5
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0 
+        scaleDown:
+          stabilizationWindowSeconds: 60
+  triggers:
+    - type: aws-sqs-queue
+      metadata:
+        queueURL: SQS_QUEUE_URL
+        queueLength: "5"  
+        awsRegion: ap-northeast-2
+        identityOwner: operator
+EOF
+
+chown -R ec2-user:ec2-user /home/ec2-user/eks
+chown -R ec2-user:ec2-user /home/ec2-user/src
+
+(
+  TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+  INST_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
+  VPC_ID=$(aws ec2 describe-instances --instance-ids "$INST_ID" --region "$REGION_CODE" --query "Reservations[0].Instances[0].VpcId" --output text)
+
+  PRIVATE_A_ID=$(aws ec2 describe-subnets --region "$REGION_CODE" --filters "Name=vpc-id,Values=$VPC_ID" "Name=availability-zone,Values=${REGION_CODE}a" --query "Subnets[?MapPublicIpOnLaunch==\`false\`].SubnetId" --output text | awk '{print $1}')
+  PRIVATE_C_ID=$(aws ec2 describe-subnets --region "$REGION_CODE" --filters "Name=vpc-id,Values=$VPC_ID" "Name=availability-zone,Values=${REGION_CODE}c" --query "Subnets[?MapPublicIpOnLaunch==\`false\`].SubnetId" --output text | awk '{print $1}')
+
+  sed -i "s|VPC_ID_PLACEHOLDER|$VPC_ID|g" /home/ec2-user/eks/cluster.yaml
+  sed -i "s|PRIVATE_A|$PRIVATE_A_ID|g" /home/ec2-user/eks/cluster.yaml
+  sed -i "s|PRIVATE_C|$PRIVATE_C_ID|g" /home/ec2-user/eks/cluster.yaml
+
+  if [ -d "/home/ec2-user/scripts" ]; then
+      chmod +x /home/ec2-user/scripts/*
+      dos2unix /home/ec2-user/scripts/*
+  fi
+
+  eksctl create cluster -f /home/ec2-user/eks/cluster.yaml
+
+  aws eks update-kubeconfig --region "$REGION_CODE" --name "skm-eks-cluster"
+  export KUBECONFIG=/root/.kube/config
+  mkdir -p /home/ec2-user/.kube
+  cp /root/.kube/config /home/ec2-user/.kube/config
+  chown -R ec2-user:ec2-user /home/ec2-user/.kube
+
+  AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+  REPO_NAME="skm-ecr"
+  
+  aws ecr create-repository --repository-name "$REPO_NAME" --region "$REGION_CODE" || true
+  aws ecr get-login-password --region "$REGION_CODE" | docker login --username AWS --password-stdin "$AWS_ACCOUNT_ID.dkr.ecr.$REGION_CODE.amazonaws.com"
+
+  cd /home/ec2-user/src/app
+  docker build -t "$REPO_NAME" .
+  docker tag "$REPO_NAME:latest" "$AWS_ACCOUNT_ID.dkr.ecr.$REGION_CODE.amazonaws.com/$REPO_NAME:latest"
+  docker push "$AWS_ACCOUNT_ID.dkr.ecr.$REGION_CODE.amazonaws.com/$REPO_NAME:latest"
+
+  aws ec2 create-tags --resources "$PRIVATE_A_ID" "$PRIVATE_C_ID" --tags Key=karpenter.sh/discovery,Value=skm-eks-cluster --region "$REGION_CODE"
+
+  aws sqs create-queue --queue-name skm-order-queue --region "$REGION_CODE" || true
+
+  NODE_ROLE_NAME=$(aws iam list-roles --query "Roles[?starts_with(RoleName, 'eksctl-skm-eks-cluster-nodegroup')].RoleName" --output text | awk '{print $1}')
+  if [ ! -z "$NODE_ROLE_NAME" ]; then
+    aws iam attach-role-policy --role-name "$NODE_ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/AmazonSQSFullAccess
+  fi
+
+  kubectl create namespace skillsmkt || true
+
+  helm repo add kedacore https://kedacore.github.io/charts || true
+  helm repo update
+  helm upgrade --install keda kedacore/keda --namespace keda --create-namespace
+
+  cd /home/ec2-user/eks/manifest
+
+  REAL_SQS_URL=$(aws sqs get-queue-url --queue-name skm-order-queue --region "$REGION_CODE" --query "QueueUrl" --output text)
+  
+  sed -i "s|INITIAL_IMAGE_PLACEHOLDER|$AWS_ACCOUNT_ID.dkr.ecr.$REGION_CODE.amazonaws.com/$REPO_NAME:latest|g" deployment.yaml
+  sed -i "s|SQS_QUEUE_URL_PLACEHOLDER|$REAL_SQS_URL|g" deployment.yaml
+  sed -i "s|queueURL: SQS_QUEUE_URL|queueURL: $REAL_SQS_URL|g" scaledobject.yaml
+
+  sed -i "s|KARPENTER_ROLE_NAME|eksctl-KarpenterNodeRole-skm-eks-cluster|g" karpenter.yaml
+
+  kubectl apply -f karpenter.yaml
+  kubectl apply -f deployment.yaml
+  kubectl apply -f scaledobject.yaml
+
+  sleep 20
+  if [ -d "/home/ec2-user/scripts" ]; then
+      /home/ec2-user/scripts/kube-setup.sh
+  fi
+) > /var/log/eksctl-build.log 2>&1 &

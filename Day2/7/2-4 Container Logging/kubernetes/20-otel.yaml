@@ -1,0 +1,159 @@
+# 3. Log Collector - OpenTelemetry Collector (DaemonSet, monitoring NS)
+#
+# helm 차트(opentelemetry-collector)는 mode=daemonset 일 때 이름에 "-agent" 를 붙여
+# DaemonSet 이 o11y-otel-agent 로 생성됩니다. 과제는 이름이 정확히 o11y-otel 이어야 하므로
+# 차트 대신 raw manifest 로 배포해 이름을 고정합니다.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: o11y-otel
+  namespace: monitoring
+---
+# k8sattributes processor 가 메타데이터를 조회하려면 아래 권한이 필요합니다.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: o11y-otel
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["extensions"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: o11y-otel
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: o11y-otel
+subjects:
+  - kind: ServiceAccount
+    name: o11y-otel
+    namespace: monitoring
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: o11y-otel
+  namespace: monitoring
+data:
+  config.yaml: |
+    receivers:
+      # /var/log/pods 의 컨테이너 로그 수집
+      filelog:
+        include: [/var/log/pods/*/*/*.log]
+        exclude: [/var/log/pods/monitoring_o11y-otel-*/*/*.log]
+        start_at: end
+        include_file_path: true
+        include_file_name: false
+        retry_on_failure:
+          enabled: true
+        operators:
+          # CRI/containerd 포맷 파싱 + k8s.namespace.name/pod.name/uid/container.name 추출
+          - id: container-parser
+            type: container
+
+    processors:
+      batch: {}
+      # Kubernetes Metadata enrichment
+      k8sattributes:
+        auth_type: serviceAccount
+        passthrough: false
+        filter:
+          node_from_env_var: K8S_NODE_NAME
+        extract:
+          metadata:
+            - k8s.namespace.name
+            - k8s.pod.name
+            - k8s.pod.uid
+            - k8s.pod.start_time
+            - k8s.deployment.name
+            - k8s.statefulset.name
+            - k8s.daemonset.name
+            - k8s.replicaset.name
+            - k8s.node.name
+        pod_association:
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.uid
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.ip
+          - sources:
+              - from: connection
+
+    exporters:
+      # OTLP HTTP -> Loki
+      otlphttp/loki:
+        logs_endpoint: http://o11y-loki.monitoring.svc.cluster.local:3100/otlp/v1/logs
+        tls:
+          insecure: true
+
+    service:
+      pipelines:
+        logs:
+          receivers: [filelog]
+          processors: [k8sattributes, batch]
+          exporters: [otlphttp/loki]
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: o11y-otel
+  namespace: monitoring
+  labels:
+    app: o11y-otel
+spec:
+  selector:
+    matchLabels:
+      app: o11y-otel
+  template:
+    metadata:
+      labels:
+        app: o11y-otel
+      annotations:
+        # ConfigMap 변경 시 롤링 재시작되도록 deploy.sh 가 체크섬을 넣어도 됨
+        checksum/config: "static"
+    spec:
+      serviceAccountName: o11y-otel
+      # /var/log/pods 로그 파일은 root 소유
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+      containers:
+        - name: otel-collector
+          image: otel/opentelemetry-collector-contrib:0.153.0
+          args: ["--config=/conf/config.yaml"]
+          env:
+            - name: K8S_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: config
+              mountPath: /conf
+            - name: varlogpods
+              mountPath: /var/log/pods
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+      volumes:
+        - name: config
+          configMap:
+            name: o11y-otel
+        - name: varlogpods
+          hostPath:
+            path: /var/log/pods
+      tolerations:
+        - operator: Exists

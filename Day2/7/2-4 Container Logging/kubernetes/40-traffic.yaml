@@ -1,0 +1,45 @@
+# 로그 트래픽 생성기
+#
+# Loki 조회는 "최근 N분" 창으로 이뤄지므로, 그 사이에 로그가 없으면 결과가 비게 됩니다.
+# (앱은 /log 를 호출해야만 로그를 만들고, 가만히 두면 ALB 헬스체크 액세스 로그만 쌓임)
+# 30초마다 info/warn/error 를 호출해 항상 최근 로그가 존재하도록 합니다.
+#
+# 필요 없으면: kubectl delete -f 40-traffic.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: log-traffic
+  namespace: o11y
+  labels:
+    app: log-traffic
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: log-traffic
+  template:
+    metadata:
+      labels:
+        app: log-traffic
+    spec:
+      containers:
+        - name: curl
+          image: curlimages/curl:8.11.1
+          # -o /dev/null : 생성기 자신의 출력은 남기지 않음 (로그 오염 방지)
+          command:
+            - /bin/sh
+            - -c
+            - |
+              URL="http://log-generator.o11y.svc.cluster.local:8080/log"
+              while true; do
+                curl -s -o /dev/null "$URL?level=info&count=10"
+                curl -s -o /dev/null "$URL?level=warn&count=5"
+                curl -s -o /dev/null "$URL?level=error&count=3"
+                sleep 30
+              done
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
