@@ -1,0 +1,29 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: sqs-worker-scaledobject
+  namespace: skills-sqs
+spec:
+  scaleTargetRef:
+    name: sqs-worker
+  minReplicaCount: 0
+  maxReplicaCount: 6
+  pollingInterval: 15
+  cooldownPeriod:  30
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 30
+          policies:
+            - type: Percent
+              value: 100
+              periodSeconds: 15
+  triggers:
+  - type: aws-sqs-queue
+    metadata:
+      queueURL: SQS_QUEUE_URL
+      activationQueueLength: "0"
+      queueLength: "2"
+      awsRegion: us-west-2
+      identityOwner: operator

@@ -20,17 +20,17 @@ resource "aws_security_group" "client" {
   }
 
   egress {
-    description = "HTTPS"
-    from_port   = 443
-    to_port     = 443
+    description = "HTTP"
+    from_port   = 80
+    to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
-    description = "HTTP"
-    from_port   = 80
-    to_port     = 80
+    description = "HTTPS"
+    from_port   = 443
+    to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -40,7 +40,7 @@ resource "aws_security_group" "client" {
     from_port   = 8080
     to_port     = 8080
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    prefix_list_ids = [data.aws_ec2_managed_prefix_list.vpc_lattice.id]
   }
 
   tags = {
@@ -56,7 +56,7 @@ resource "aws_security_group" "service" {
     from_port   = 8080
     to_port     = 8080
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    prefix_list_ids = [data.aws_ec2_managed_prefix_list.vpc_lattice.id]
   }
 
   egress {
@@ -93,7 +93,7 @@ resource "aws_security_group" "client_assoc" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    prefix_list_ids = [data.aws_ec2_managed_prefix_list.vpc_lattice.id]
   }
   
   tags = {

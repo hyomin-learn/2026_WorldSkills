@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sqs-worker
+  namespace: skills-sqs
+  labels:
+    app: sqs-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sqs-worker
+  template:
+    metadata:
+      labels:
+        app: sqs-worker
+    spec:
+      serviceAccountName: sqs-worker-sa
+      containers:
+      - name: sqs-worker
+        image: IMAGE
+        imagePullPolicy: Always
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        env:
+        - name: AWS_REGION
+          value: "us-west-2"
+        - name: SQS_QUEUE_URL
+          value: "SQS_QUEUE_URLS"
+        - name: PROCESSING_SECONDS
+          value: "5"
+      nodeSelector:
+        karpenter.sh/nodepool: skills-sqs-nodepool
+        skills-nodepool: event-worker
