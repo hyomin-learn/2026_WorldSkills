@@ -81,8 +81,8 @@ def handler(event, context):
                     Item={
                         "sensorId": sensor_id,
                         "timestamp": data["timestamp"],
-                        "temperature": data["temperature"],
-                        "humidity": data["humidity"],
+                        "temperature": str(data["temperature"]),
+                        "humidity": str(data["humidity"]),
                         "location": data["location"],
                         "status": "NORMAL",
                     }

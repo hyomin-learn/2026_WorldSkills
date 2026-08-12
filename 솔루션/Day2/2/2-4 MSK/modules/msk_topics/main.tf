@@ -77,7 +77,9 @@ locals {
       aws ec2 get-console-output --instance-id "$INSTANCE_ID" --region "$REGION" \
         --query "Output" --output text 2>/dev/null | tail -60 || true
       echo "=================================================================="
-      exit 1
+      echo "WARNING: could not auto-create Kafka topics (SSM not ready). Continuing apply anyway;"
+      echo "create the topics manually later (kafka-topics.sh via SSM once online, or CloudShell)."
+      exit 0
     fi
 
     COMMAND_ID=$(aws ssm send-command \
@@ -103,8 +105,9 @@ locals {
       --region "$REGION"
 
     if [ "$CMD_STATUS" != "Success" ]; then
-      echo "Topic creation command did not succeed: $CMD_STATUS"
-      exit 1
+      echo "WARNING: topic creation command did not succeed ($CMD_STATUS). Continuing apply anyway;"
+      echo "create the topics manually later if needed."
+      exit 0
     fi
   EOT
 
@@ -149,7 +152,9 @@ locals {
       $Console = aws ec2 get-console-output --instance-id $InstanceId --region $Region --query "Output" --output text
       if ($Console) { ($Console -split "`n") | Select-Object -Last 60 }
       Write-Host "=================================================================="
-      exit 1
+      Write-Host "WARNING: could not auto-create Kafka topics (SSM not ready). Continuing apply anyway;"
+      Write-Host "create the topics manually later (kafka-topics.sh via SSM once online, or CloudShell)."
+      exit 0
     }
 
     $CommandId = aws ssm send-command --instance-ids $InstanceId --document-name "AWS-RunShellScript" --parameters "file://${local.params_path}" --query "Command.CommandId" --output text --region $Region
@@ -165,8 +170,9 @@ locals {
     aws ssm get-command-invocation --command-id $CommandId --instance-id $InstanceId --region $Region
 
     if ($CmdStatus -ne "Success") {
-      Write-Error "Topic creation command did not succeed: $CmdStatus"
-      exit 1
+      Write-Host "WARNING: topic creation command did not succeed ($CmdStatus). Continuing apply anyway;"
+      Write-Host "create the topics manually later if needed."
+      exit 0
     }
   EOT
 }
