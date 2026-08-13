@@ -56,7 +56,7 @@ source kubectl-connect $EKS_CLUSTER_NAME
 ```shell
 aws eks update-kubeconfig --region $REGION_CODE --name $EKS_CLUSTER_NAME
 export KUBECONFIG=~/.kube/config
-cp ~/.kube/config /home/cloudshell-user/.kube/config-$EKS_CLUSTER_NAME
+cp ~/.kube/config /home/cloudshell-user/.kube/config-클러스터 이름
 kubectl get nodes 
 source kubectl-connect $EKS_CLUSTER_NAME -> 확인되면 채점
 ```
