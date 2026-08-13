@@ -51,6 +51,7 @@ aws eks update-kubeconfig --region $REGION_CODE --name $EKS_CLUSTER_NAME
 source kubectl-connect $EKS_CLUSTER_NAME
 ```
 <br>
+
 ## EKS Kubeconfig version2
 ```shell
 aws eks update-kubeconfig --region 내 리전 --name 클러스터 이름
