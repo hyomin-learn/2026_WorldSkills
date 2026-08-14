@@ -58,7 +58,7 @@ source kubectl-connect $EKS_CLUSTER_NAME
 ```shell
 aws eks create-access-entry --cluster-name unicorn-eks-cluster --principal-arn "$USER_ARN" --type STANDARD
 
-aws eks associate-access-policy --cluster-name unicorn-eks-cluster --principal-arn "$MY_ARN" \
+aws eks associate-access-policy --cluster-name unicorn-eks-cluster --principal-arn "$USER_ARN" \
   --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy \
   --access-scope type=cluster
 
