@@ -6,8 +6,6 @@ ALB_SECURITY_GROUP_NAME="unicorn-alb-sg"
 FLUENT_BIT_ROLE_NAME="unicorn-fluent-bit-role"
 DYNAMODB_ROLE_NAME="unicorn-book-app-role"
 LAMBDA_ROLE_NAME="unicorn-get-booking-func-role"
-PLAYER_NUMBER="${PLAYER_NUMBER:-$number}"
-IAM_USER_NAME="skills-terraform-user"
 
 CLUSTER_YAML_PATH=$(sudo find / -name "cluster.yaml" 2>/dev/null)
 FLUENT_BIT_ROLE_ARN=$(aws iam get-role --role-name $FLUENT_BIT_ROLE_NAME --query "Role.Arn" --output text --region $REGION_CODE)
@@ -21,16 +19,14 @@ su - ec2-user -c 'REGION_CODE="ap-northeast-2"; EKS_CLUSTER_NAME="unicorn-eks-cl
 aws eks create-access-entry --cluster-name $EKS_CLUSTER_NAME --principal-arn arn:aws:iam::$ACCOUNT_ID:root --region $REGION_CODE > /dev/null
 aws eks associate-access-policy --cluster-name $EKS_CLUSTER_NAME --principal-arn arn:aws:iam::$ACCOUNT_ID:root --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy --access-scope type=cluster --region $REGION_CODE > /dev/null
 
-aws eks create-access-entry --cluster-name $EKS_CLUSTER_NAME --principal-arn arn:aws:iam::$ACCOUNT_ID:user/$IAM_USER_NAME --region $REGION_CODE > /dev/null
-aws eks associate-access-policy --cluster-name $EKS_CLUSTER_NAME --principal-arn arn:aws:iam::$ACCOUNT_ID:user/$IAM_USER_NAME --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy --access-scope type=cluster --region $REGION_CODE > /dev/null
-
 kubectl create ns unicorn
 kubectl create ns logging
 
 eksctl create addon --cluster $EKS_CLUSTER_NAME --name=eks-pod-identity-agent --region $REGION_CODE --force
 
-kubectl -n kube-system rollout status daemonset/eks-pod-identity-agent --timeout=180s
-sleep 15
+KMS_KEY_ALIASE_NAME="alias/unicorn-kms-platform"
+KMS_KEY_ARN=$(aws kms describe-key --key-id $KMS_KEY_ALIASE_NAME --query "KeyMetadata.Arn" --output text --region $REGION_CODE)
+aws iam put-role-policy --role-name $LAMBDA_ROLE_NAME --policy-name AllowKMSDecrypt --policy-document "{\"Version\": \"2012-10-17\",\"Statement\": [{\"Effect\": \"Allow\",\"Action\": \"kms:Decrypt\",\"Resource\": \"${KMS_KEY_ARN}\"}]}"
 
 eksctl create podidentityassociation \
   --region $REGION_CODE \
@@ -100,16 +96,20 @@ eksctl create addon \
 
 sleep 10
 
-kubectl apply -f /home/ec2-user/eks/manifest/grafana/configmap.yaml
-
-sed -i "s|PLAYER_NUMBER|$PLAYER_NUMBER|g" /home/ec2-user/eks/manifest/prometheus/kube-prometheus-stack-values.yaml
-
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
-helm upgrade -i unicorn-monitoring prometheus-community/kube-prometheus-stack \
+helm upgrade -i prometheus prometheus-community/prometheus \
   -n monitoring \
-  -f /home/ec2-user/eks/manifest/prometheus/kube-prometheus-stack-values.yaml
+  -f /home/ec2-user/eks/manifest/prometheus/values.yaml
 
 sleep 30
+
+kubectl apply -f /home/ec2-user/eks/manifest/grafana/configmap.yaml
+
+helm repo add grafana-community https://grafana-community.github.io/helm-charts
+helm repo update
+helm upgrade -i grafana grafana-community/grafana \
+  -n monitoring \
+  -f /home/ec2-user/eks/manifest/grafana/values.yaml
 
 kubectl apply -f /home/ec2-user/eks/manifest/grafana/ingress.yaml

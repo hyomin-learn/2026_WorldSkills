@@ -8,17 +8,18 @@ data:
     [SERVICE]
         Flush               1
         Grace               5
-        Daemon              off
+        Daemon              Off
         Log_Level           info
         Parsers_File        /fluent-bit/etc/parsers.conf
 
     [INPUT]
         Name                tail
-        Path                /var/log/containers/*unicorn-book-app*.log
+        Path                /var/log/containers/*unicorn*.log
         Parser              cri
         Tag                 kube.*
-        Refresh_Interval    10
+        Refresh_Interval    5
         Mem_Buf_Limit       50M
+        Skip_Long_Lines     On
 
     [FILTER]
         Name                grep
@@ -31,50 +32,61 @@ data:
         Key_Name            log
         Parser              access_log
         Reserve_Data        On
+        Preserve_Key        Off
+
+    [FILTER]
+        Name                grep
+        Match               kube.*
+        Regex               method .+
+
+    [FILTER]
+        Name                lua
+        Match               kube.*
+        script              /fluent-bit/etc/metric.lua
+        call                convert_duration
 
     [FILTER]
         Name                log_to_metrics
         Match               kube.*
-        tag                 prometheus_metrics
-        metric_mode         histogram
-        metric_name         http_request_duration_seconds
-        metric_description  HTTP request duration in seconds
-        value_field         duration
-        bucket              0.1
-        bucket              0.2
-        bucket              0.3
-        bucket              0.4
-        bucket              0.5
-        bucket              1.0
-        bucket              2.0
-        bucket              3.0
-        bucket              4.0
-        bucket              5.0
-        bucket              10.0
-        bucket              15.0
-        bucket              20.0
-        bucket              30.0
-        bucket              40.0
-        bucket              50.0
+        Tag                 prometheus_metrics
+        Metric_Mode         histogram
+        Metric_Name         http_request_duration_seconds
+        Metric_Description  HTTP request duration in seconds
+        Value_Field         duration
+        Bucket              0.1
+        Bucket              0.2
+        Bucket              0.3
+        Bucket              0.4
+        Bucket              0.5
+        Bucket              1
+        Bucket              2
+        Bucket              3
+        Bucket              4
+        Bucket              5
+        Bucket              10
+        Bucket              15
+        Bucket              20
+        Bucket              30
+        Bucket              40
+        Bucket              50
+        Add_Label           method $method
+        Add_Label           path $path
+        Add_Label           status_code $status_code
 
     [FILTER]
         Name                lua
         Match               kube.*
         script              /fluent-bit/etc/format.lua
-        call                format_timestamp
-
-    [FILTER]
-        Name                grep
-        Match               kube.*
-        Regex               method .*
+        call                format_cloudwatch
 
     [OUTPUT]
         Name                cloudwatch_logs
         Match               kube.*
-        region              ap-northeast-2
+        Region              ap-northeast-2
         Log_Group_Name      /unicorn/eks/book-app
         Log_Stream_Name     /unicorn/eks/book-app/stream
-        Auto_Create_Group   off
+        Auto_Create_Group   true
+        Log_Key             cw_log
 
     [OUTPUT]
         Name                prometheus_exporter
@@ -89,30 +101,48 @@ data:
         Regex               ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$
         Time_Key            time
         Time_Format         %Y-%m-%dT%H:%M:%S.%L%z
+        Time_Keep           On
 
     [PARSER]
         Name                access_log
         Format              regex
-        Regex               ^(?<timestamp>\d{4}\/\d{2}\/\d{2} \d{2}\:\d{2}\:\d{2}) access method=(?<method>[^ ]+) path=(?<path>[^ ]+) status=(?<status_code>\d+) duration=(?<duration>[^ ]+) remote_addr=(?<client_ip>[^ ]+):(?<port>[^ ]+) user_agent="(?<user_agent>[^"]+)"
-        Time_Key            timestamp
-        Time_Format         %Y/%m/%d %H:%M:%S
-        Time_Keep           On
-        Types               status_code:integer duration:float
+        Regex               ^(?<timestamp>\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}) access method=(?<method>[^ ]+) path=(?<path>[^ ]+) status=(?<status_code>\d+)\s*duration=(?<duration_ms>[0-9.]+)ms remote_addr=(?<client_ip>[^ :]+):(?<port>[0-9]+) user_agent="(?<user_agent>[^"]*)".*$
+        Types               status_code:integer duration_ms:float port:integer
 
-  format.lua: |
-    function format_timestamp(tag, timestamp, record)
-        local t = record["timestamp"]
-        local new_t = t
-        if t ~= nil then
-            new_t = string.gsub(t, "(%d+)/(%d+)/(%d+) (%d+):(%d+):(%d+)", "%1-%2-%3T%4:%5:%6Z")
+  metric.lua: |
+    function convert_duration(tag, timestamp, record)
+        if record["duration_ms"] ~= nil then
+            local ms = tonumber(record["duration_ms"])
+            if ms ~= nil then
+                record["duration"] = ms / 1000
+            end
         end
 
-        local ordered_record = {}
-        ordered_record["timestamp"] = new_t
-        ordered_record["method"] = record["method"]
-        ordered_record["path"] = record["path"]
-        ordered_record["status_code"] = record["status_code"]
-        ordered_record["client_ip"] = record["client_ip"]
-        
-        return 1, timestamp, ordered_record
+        return 1, timestamp, record
+    end
+
+  format.lua: |
+    function format_cloudwatch(tag, timestamp, record)
+        local formatted_timestamp = record["timestamp"]
+
+        if formatted_timestamp ~= nil then
+            formatted_timestamp = string.gsub(
+                formatted_timestamp,
+                "(%d+)/(%d+)/(%d+) (%d+):(%d+):(%d+)",
+                "%1-%2-%3T%4:%5:%6Z"
+            )
+        end
+
+        local json =
+            '{"timestamp":"' .. tostring(formatted_timestamp) ..
+            '","method":"' .. tostring(record["method"]) ..
+            '","path":"' .. tostring(record["path"]) ..
+            '","status_code":' .. tostring(record["status_code"]) ..
+            ',"client_ip":"' .. tostring(record["client_ip"]) ..
+            '"}'
+
+        local new_record = {}
+        new_record["cw_log"] = json
+
+        return 1, timestamp, new_record
     end

@@ -1,5 +1,5 @@
 locals {
-  player_number = "103"
+  player_number = "105"
 
   parameter = "unicorn"
 
@@ -601,12 +601,6 @@ locals {
         },
         {
           effect    = "Allow"
-          actions   = ["kms:Decrypt", "kms:DescribeKey"]
-          resources = [module.kms_virginia["${local.parameter}-kms-platform"].kms_replica_arn]
-          conditions = []
-        },
-        {
-          effect    = "Allow"
           actions   = ["ec2:CreateNetworkInterface", "ec2:DescribeNetworkInterfaces", "ec2:DescribeSubnets", "ec2:DeleteNetworkInterface", "ec2:AssignPrivateIpAddresses", "ec2:UnassignPrivateIpAddresses"]
           resources = ["*"]
           conditions = []
@@ -804,10 +798,7 @@ locals {
       default_action = "allow"
       default_block_response = 403 # 403, 404, 405
       custom_response_key  = "custom-block-response"
-      custom_response_body = <<EOF
-      Request blocked by Unicorn WAF
-
-      EOF
+      custom_response_body = "Request blocked by Unicorn WAF"
       
       enable_managed = true
       managed_rules = [

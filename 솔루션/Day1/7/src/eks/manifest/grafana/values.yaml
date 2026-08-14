@@ -1,0 +1,26 @@
+adminUser: skillsPLAYER_NUMBER
+adminPassword: HelloKrSkills!PLAYER_NUMBER@
+
+nodeSelector:
+  unicorn: addon
+
+sidecar:    
+  dashboards:
+    enabled: true
+    label: grafana_dashboard
+    labelValue: "unicorn"
+    watchMethod: WATCH
+
+grafana.ini:
+  server:
+    root_url: "%(protocol)s://%(domain)s:%(http_port)s/"
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        url: http://prometheus-server.monitoring.svc.cluster.local
+        access: proxy
+        isDefault: true

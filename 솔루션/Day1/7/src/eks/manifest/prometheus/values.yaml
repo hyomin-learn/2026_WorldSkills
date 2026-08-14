@@ -1,0 +1,44 @@
+server:
+  nodeSelector:
+    unicorn: addon
+
+  persistentVolume:
+    enabled: false
+
+alertmanager:
+  enabled: false
+
+prometheus-pushgateway:
+  enabled: false
+
+kube-state-metrics:
+  enabled: true
+  metricLabelsAllowlist:
+    - nodes=[*]
+
+scrapeConfigs:
+  prometheus:
+    enabled: true
+    metrics_path: '/metrics'
+    static_configs:
+      - targets:
+          - localhost:9090
+
+extraScrapeConfigs: |
+  - job_name: 'fluent-bit'
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_namespace]
+        action: keep
+        regex: logging
+      
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: fluent-bit
+      
+      - source_labels: [__address__]
+        action: replace
+        regex: ([^:]+)(?::\d+)?
+        target_label: __address__
+        replacement: $1:2021

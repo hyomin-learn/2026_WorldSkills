@@ -23,6 +23,6 @@
           pathType: Prefix
           backend:
             service:
-              name: unicorn-monitoring-grafana
+              name: grafana
               port:
                 number: 80

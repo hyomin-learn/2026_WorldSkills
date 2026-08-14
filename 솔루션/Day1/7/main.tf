@@ -341,7 +341,7 @@ module "cloudwatch_logs_seoul" {
 
   source = "./modules/cloudwatch_logs"
 
-  for_each = local.cloudwatch_logs
+  for_each = {for k, v in local.cloudwatch_logs : k => v if k != "aws-waf-logs-${local.parameter}"}
 
   name       = each.key
   tags       = each.value.tags

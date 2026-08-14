@@ -1,6 +1,6 @@
 #!/bin/bash
 REGION_CODE="ap-northeast-2"
-export PLAYER_NUMBER=${player_number}
+PLAYER_NUMBER=${player_number}
 
 dnf update -y
 dnf upgrade -y
@@ -44,6 +44,7 @@ S3_BUCKET_NAME=$(aws s3api list-buckets --query "Buckets[?contains(Name, 'image'
 aws s3 cp s3://$S3_BUCKET_NAME/ /home/ec2-user/ --recursive --region $REGION_CODE
 aws s3 rb s3://$S3_BUCKET_NAME --force --region $REGION_CODE
 
+sed -i "s|PLAYER_NUMBER|$PLAYER_NUMBER|g" /home/ec2-user/eks/manifest/grafana/values.yaml
 chown -R ec2-user:ec2-user /home/ec2-user/
 chmod +x /home/ec2-user/scripts/*
 dos2unix /home/ec2-user/scripts/*

@@ -41,15 +41,15 @@ resource "aws_cloudfront_distribution" "cf" {
     default_root_object = var.default_root_object
     
     default_cache_behavior {
-        cache_policy_id  = "658327ea-f89d-4fab-a63d-7e88639e58f6"
-        target_origin_id = "s3-origin"
-        
+      cache_policy_id  = "658327ea-f89d-4fab-a63d-7e88639e58f6"
+      target_origin_id = "s3-origin"
+      
 
-        allowed_methods = ["GET", "HEAD"]
-        cached_methods  = ["GET", "HEAD"]
+      allowed_methods = ["GET", "HEAD"]
+      cached_methods  = ["GET", "HEAD"]
 
-        compress = true
-        viewer_protocol_policy = "redirect-to-https"
+      compress = true
+      viewer_protocol_policy = "redirect-to-https"
     }
     price_class = "PriceClass_All"
 
