@@ -52,7 +52,21 @@ source kubectl-connect $EKS_CLUSTER_NAME
 ```
 <br>
 
+<br>
+
 ## EKS Kubeconfig version2
+```shell
+aws eks create-access-entry --cluster-name unicorn-eks-cluster --principal-arn "$USER_ARN" --type STANDARD
+
+aws eks associate-access-policy --cluster-name unicorn-eks-cluster --principal-arn "$MY_ARN" \
+  --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy \
+  --access-scope type=cluster
+
+source kubectl-connect $EKS_CLUSTER_NAME
+```
+<br>
+
+## EKS Kubeconfig version3
 ```shell
 aws eks update-kubeconfig --region $REGION_CODE --name $EKS_CLUSTER_NAME
 export KUBECONFIG=~/.kube/config
