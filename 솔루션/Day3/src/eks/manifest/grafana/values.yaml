@@ -1,0 +1,60 @@
+adminUser: admin
+adminPassword: Skill53##
+
+nodeSelector:
+  type: addon
+
+tolerations:
+  - key: "dedicated"
+    operator: "Equal"
+    value: "addon"
+    effect: "NoSchedule"
+
+grafana.ini:
+  server:
+    root_url: "%(protocol)s://%(domain)s:%(http_port)s/grafana/"
+    serve_from_sub_path: true
+  feature_toggles:
+    enable: kubernetesDashboards kubernetesDashboardsAPI
+
+serviceAccount:
+  create: false
+  name: "apdev-grafana-sa"
+
+env:
+  AWS_REGION: ap-northeast-2
+  AWS_DEFAULT_REGION: ap-northeast-2
+  AWS_SDK_LOAD_CONFIG: "true"
+  GF_PLUGINS_PREINSTALL_SYNC: "grafana-athena-datasource@3.3.2"
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: prometheus
+        type: prometheus
+        url: http://prometheus-server.monitoring.svc.cluster.local/prometheus
+        access: proxy
+        isDefault: true
+
+      - name: cloudwatch
+        type: cloudwatch
+        access: proxy
+        isDefault: false
+        jsonData:
+          authType: default
+          defaultRegion: ap-northeast-2
+
+      - name: athena
+        uid: apdev-athena
+        type: grafana-athena-datasource
+        access: proxy
+        isDefault: false
+        editable: true
+        jsonData:
+          authType: default
+          defaultRegion: ap-northeast-2
+          catalog: AwsDataCatalog
+          database: apdev
+          workgroup: primary
+          outputLocation: s3://S3_BUCKET_NAME/athena-results/

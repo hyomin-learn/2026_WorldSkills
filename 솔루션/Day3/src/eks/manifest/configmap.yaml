@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: apdev-db-config
+  namespace: apdev
+data:
+  MYSQL_USER: "admin"
+  MYSQL_HOST: "DB_HOST"
+  MYSQL_PORT: "DB_PORT"
+  MYSQL_DBNAME: "apdev"

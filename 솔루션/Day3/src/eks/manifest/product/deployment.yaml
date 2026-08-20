@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apdev-product-deploy
+  namespace: apdev
+  labels:
+    app: product
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: product
+  template:
+    metadata:
+      labels:
+        app: product
+    spec:
+      serviceAccountName: apdev-product-sa
+      containers:
+      - name: apdev-product-cnt
+        image: IMAGE
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        resources:
+          limits:
+            cpu: 200m
+            memory: 300Mi
+          requests:
+            cpu: 200m
+            memory: 150Mi
+        env:
+        - name: MYSQL_USER
+          valueFrom:
+            configMapKeyRef:
+              name: apdev-db-config
+              key: MYSQL_USER
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: apdev-db-secret
+              key: MYSQL_PASSWORD
+        - name: MYSQL_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: apdev-db-config
+              key: MYSQL_HOST
+        - name: MYSQL_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: apdev-db-config
+              key: MYSQL_PORT
+        - name: MYSQL_DBNAME
+          valueFrom:
+            configMapKeyRef:
+              name: apdev-db-config
+              key: MYSQL_DBNAME
+        - name: S3_BUCKET
+          valueFrom:
+            configMapKeyRef:
+              name: apdev-product-config
+              key: S3_BUCKET
+        startupProbe:
+          httpGet:
+            path: /healthcheck
+            port: 8080
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 10
+          failureThreshold: 12
+          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /healthcheck
+            port: 8080
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 10
+          failureThreshold: 3
+          successThreshold: 1
+        livenessProbe:
+          httpGet:
+            path: /healthcheck
+            port: 8080
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 10
+          failureThreshold: 6
+          successThreshold: 1
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh","-c","sleep 30"]
+      terminationGracePeriodSeconds: 10
+      nodeSelector:
+        type: app

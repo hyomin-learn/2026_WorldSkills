@@ -1,0 +1,52 @@
+server:
+  nodeSelector:
+    type: addon
+
+  tolerations:
+    - key: "dedicated"
+      operator: "Equal"
+      value: "addon"
+      effect: "NoSchedule"
+
+  prefixURL: /prometheus
+  baseURL: /prometheus
+
+alertmanager:
+  enabled: false
+
+prometheus-pushgateway:
+  enabled: false
+
+kube-state-metrics:
+  enabled: true
+
+  nodeSelector:
+    type: addon
+
+  tolerations:
+    - key: "dedicated"
+      operator: "Equal"
+      value: "addon"
+      effect: "NoSchedule"
+
+  metricLabelsAllowlist:
+    - nodes=[*]
+
+configmapReload:
+  prometheus:
+    enabled: true
+    name: configmap-reload
+
+prometheus-node-exporter:
+  enabled: true
+
+  nodeSelector:
+    type: app
+
+scrapeConfigs:
+  prometheus:
+    enabled: true
+    metrics_path: '/prometheus/metrics'
+    static_configs:
+      - targets:
+          - localhost:9090

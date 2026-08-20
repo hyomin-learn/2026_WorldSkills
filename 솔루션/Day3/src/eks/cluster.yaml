@@ -1,0 +1,65 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: apdev-eks-cluster
+  version: "1.35"
+  region: ap-northeast-2
+  tags:
+    karpenter.sh/discovery: apdev-eks-cluster
+
+cloudWatch:
+  clusterLogging:
+    enableTypes: ["*"]
+
+iam:
+  withOIDC: true
+  serviceAccounts:
+  - metadata:
+      name: aws-load-balancer-controller
+      namespace: kube-system
+    wellKnownPolicies:
+      awsLoadBalancerController: true
+  - metadata:
+      name: cert-manager
+      namespace: cert-manager
+    wellKnownPolicies:
+      certManager: true
+
+karpenter:
+  version: '1.12.1'
+  createServiceAccount: true
+
+vpc:
+  subnets:
+    public:
+      ap-northeast-2a: { id: PUBLIC_A }
+      ap-northeast-2c: { id: PUBLIC_C }
+    private:
+      ap-northeast-2a: { id: PRIVATE_A }
+      ap-northeast-2c: { id: PRIVATE_C }
+
+managedNodeGroups:
+  - name: apdev-app-ng
+    labels: { type: app }
+    instanceName: apdev-app-node
+    instanceType: t3.medium
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 3
+    privateNetworking: true
+    amiFamily: AmazonLinux2023
+
+  - name: apdev-addon-ng
+    labels: { type: addon }
+    instanceName: apdev-addon-node
+    instanceType: t3.medium
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 1
+    privateNetworking: true
+    amiFamily: AmazonLinux2023
+    taints:
+      - key: "dedicated"
+        value: "addon"
+        effect: "NoSchedule"
