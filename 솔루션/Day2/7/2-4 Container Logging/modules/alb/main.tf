@@ -1,7 +1,3 @@
-# LBC 의 Ingress 는 TargetGroup 이름을 지정할 수 없습니다(자동 생성: k8s-xxxx-yyyy).
-# 과제는 TG 이름을 o11y-app-tg / o11y-grafana-tg 로 요구하므로
-# ALB/TG/Listener 를 Terraform 이 직접 만들고, 파드 등록만 TargetGroupBinding 으로 위임합니다.
-
 resource "aws_security_group" "alb" {
   name        = "${var.project}-alb-sg"
   description = "Allow HTTP to the ALBs"
@@ -25,7 +21,6 @@ resource "aws_security_group" "alb" {
   tags = { Name = "${var.project}-alb-sg" }
 }
 
-# =========================== App (log-generator) ===========================
 resource "aws_lb" "app" {
   name               = "${var.project}-app-alb"
   internal           = false
@@ -40,7 +35,7 @@ resource "aws_lb_target_group" "app" {
   port        = 8080
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
-  target_type = "ip" # 파드 IP 직접 등록 (TargetGroupBinding)
+  target_type = "ip"
 
   health_check {
     enabled             = true
@@ -68,7 +63,6 @@ resource "aws_lb_listener" "app" {
   }
 }
 
-# =========================== Grafana ===========================
 resource "aws_lb" "grafana" {
   name               = "${var.project}-grafana-alb"
   internal           = false

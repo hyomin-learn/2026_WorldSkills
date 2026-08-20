@@ -1,9 +1,5 @@
-# 5. Dashboard - Grafana (monitoring NS, ALB)
-# helm install o11y-grafana grafana/grafana -n monitoring -f grafana-values.yaml
 fullnameOverride: o11y-grafana
 
-# Admin 계정: skills<선수등록번호> / GoodJob!Skills<선수등록번호>^^
-# 아래 __NN__ 을 본인 선수등록번호로 치환하세요 (deploy.sh 가 COMPETITOR 로 치환).
 adminUser: skills__NN__
 adminPassword: GoodJob!Skills__NN__^^
 
@@ -11,12 +7,9 @@ service:
   type: ClusterIP
   port: 80
 
-# ALB(o11y-grafana-alb) / TG(o11y-grafana-tg) 는 Terraform 이 이름 고정해 생성하고,
-# 파드 등록은 TargetGroupBinding(30-grafana-tgb.yaml)이 담당하므로 chart ingress 는 끕니다.
 ingress:
   enabled: false
 
-# Loki Datasource
 datasources:
   datasources.yaml:
     apiVersion: 1
@@ -38,8 +31,6 @@ dashboardProviders:
         type: file
         disableDeletion: false
         editable: true
-        # 파일로 프로비저닝된 대시보드는 기본적으로 UI 저장이 막힙니다.
-        # 채점 중 패널을 손봐야 할 수 있으므로 UI 수정/저장을 허용합니다.
         allowUiUpdates: true
         options:
           path: /var/lib/grafana/dashboards/default
@@ -49,120 +40,28 @@ dashboards:
     log-overview:
       json: |
         {
-          "title": "Log Overview",
-          "uid": "log-overview",
-          "schemaVersion": 39,
-          "timezone": "browser",
-          "time": {
-            "from": "now-1h",
-            "to": "now"
+          "annotations": {
+            "list": [
+              {
+                "builtIn": 1,
+                "datasource": {
+                  "type": "grafana",
+                  "uid": "-- Grafana --"
+                },
+                "enable": true,
+                "hide": true,
+                "iconColor": "rgba(0, 211, 255, 1)",
+                "name": "Annotations & Alerts",
+                "type": "dashboard"
+              }
+            ]
           },
-          "refresh": "30s",
+          "editable": true,
+          "fiscalYearStartMonth": 0,
+          "graphTooltip": 0,
+          "links": [],
           "panels": [
             {
-              "type": "timeseries",
-              "title": "Log Count Over Time",
-              "gridPos": {
-                "h": 8,
-                "w": 12,
-                "x": 0,
-                "y": 0
-              },
-              "datasource": {
-                "type": "loki",
-                "uid": "loki"
-              },
-              "fieldConfig": {
-                "defaults": {
-                  "custom": {
-                    "drawStyle": "bars",
-                    "fillOpacity": 100,
-                    "lineWidth": 1,
-                    "barAlignment": 0,
-                    "pointSize": 1,
-                    "showPoints": "never",
-                    "stacking": {
-                      "mode": "normal",
-                      "group": "A"
-                    }
-                  }
-                },
-                "overrides": [
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "options": "info"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "mode": "fixed",
-                          "fixedColor": "green"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "options": "warn"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "mode": "fixed",
-                          "fixedColor": "yellow"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "options": "error"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "mode": "fixed",
-                          "fixedColor": "red"
-                        }
-                      }
-                    ]
-                  }
-                ]
-              },
-              "options": {
-                "legend": {
-                  "displayMode": "list",
-                  "placement": "bottom",
-                  "showLegend": true
-                },
-                "tooltip": {
-                  "mode": "multi",
-                  "sort": "none"
-                }
-              },
-              "targets": [
-                {
-                  "refId": "A",
-                  "expr": "sum by (level) (count_over_time({k8s_namespace_name=\"o11y\"} | json | __error__=\"\" | label_format level=`{{ lower .level }}` [$__interval]))",
-                  "legendFormat": "{{level}}"
-                }
-              ]
-            },
-            {
-              "type": "piechart",
-              "title": "Log Level Distribution",
-              "gridPos": {
-                "h": 8,
-                "w": 12,
-                "x": 12,
-                "y": 0
-              },
               "datasource": {
                 "type": "loki",
                 "uid": "loki"
@@ -171,6 +70,41 @@ dashboards:
                 "defaults": {
                   "color": {
                     "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "fillOpacity": 80,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "lineWidth": 1,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": 0
+                      },
+                      {
+                        "color": "red",
+                        "value": 80
+                      }
+                    ]
                   }
                 },
                 "overrides": [
@@ -183,8 +117,8 @@ dashboards:
                       {
                         "id": "color",
                         "value": {
-                          "mode": "fixed",
-                          "fixedColor": "green"
+                          "fixedColor": "green",
+                          "mode": "fixed"
                         }
                       }
                     ]
@@ -198,8 +132,8 @@ dashboards:
                       {
                         "id": "color",
                         "value": {
-                          "mode": "fixed",
-                          "fixedColor": "yellow"
+                          "fixedColor": "yellow",
+                          "mode": "fixed"
                         }
                       }
                     ]
@@ -213,14 +147,130 @@ dashboards:
                       {
                         "id": "color",
                         "value": {
-                          "mode": "fixed",
-                          "fixedColor": "red"
+                          "fixedColor": "red",
+                          "mode": "fixed"
                         }
                       }
                     ]
                   }
                 ]
               },
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 0
+              },
+              "id": 1,
+              "options": {
+                "barRadius": 0,
+                "barWidth": 0.05,
+                "fullHighlight": false,
+                "groupWidth": 0.7,
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "orientation": "auto",
+                "showValue": "never",
+                "stacking": "percent",
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "single",
+                  "sort": "none"
+                },
+                "xTickLabelRotation": 0,
+                "xTickLabelSpacing": 0
+              },
+              "targets": [
+                {
+                  "direction": "backward",
+                  "editorMode": "code",
+                  "expr": "sum by (level) (count_over_time({k8s_namespace_name=\"o11y\"} | json | __error__=\"\" | label_format level=`{{ lower .level }}` [$__interval]))",
+                  "legendFormat": "{{level}}",
+                  "queryType": "range",
+                  "refId": "A"
+                }
+              ],
+              "title": "Log Count Over Time",
+              "type": "barchart"
+            },
+            {
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    }
+                  },
+                  "mappings": []
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "info"
+                    },
+                    "properties": [
+                      {
+                        "id": "color",
+                        "value": {
+                          "fixedColor": "green",
+                          "mode": "fixed"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "warn"
+                    },
+                    "properties": [
+                      {
+                        "id": "color",
+                        "value": {
+                          "fixedColor": "yellow",
+                          "mode": "fixed"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "error"
+                    },
+                    "properties": [
+                      {
+                        "id": "color",
+                        "value": {
+                          "fixedColor": "red",
+                          "mode": "fixed"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 0
+              },
+              "id": 2,
               "options": {
                 "legend": {
                   "displayMode": "list",
@@ -236,44 +286,74 @@ dashboards:
                   "fields": "",
                   "values": false
                 },
+                "sort": "desc",
                 "tooltip": {
+                  "hideZeros": false,
                   "mode": "single",
                   "sort": "none"
                 }
               },
               "targets": [
                 {
-                  "refId": "A",
                   "expr": "sum by (level) (count_over_time({k8s_namespace_name=\"o11y\"} | json | __error__=\"\" | label_format level=`{{ lower .level }}` [$__interval]))",
-                  "legendFormat": "{{level}}"
+                  "legendFormat": "{{level}}",
+                  "refId": "A"
                 }
-              ]
+              ],
+              "title": "Log Level Distribution",
+              "type": "piechart"
             },
             {
-              "type": "logs",
-              "title": "Recent Logs",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+              },
               "gridPos": {
                 "h": 10,
                 "w": 24,
                 "x": 0,
                 "y": 8
               },
-              "datasource": {
-                "type": "loki",
-                "uid": "loki"
-              },
+              "id": 3,
               "options": {
+                "dedupStrategy": "none",
+                "enableInfiniteScrolling": false,
+                "enableLogDetails": true,
+                "prettifyLogMessage": false,
+                "showCommonLabels": false,
+                "showControls": false,
+                "showLabels": true,
                 "showTime": true,
                 "sortOrder": "Descending",
-                "wrapLogMessage": false,
-                "enableLogDetails": true
+                "wrapLogMessage": false
               },
               "targets": [
                 {
-                  "refId": "A",
-                  "expr": "{k8s_namespace_name=\"o11y\"} | json ts=\"ts\" | __error__=\"\""
+                  "expr": "{k8s_namespace_name=\"o11y\"} | json | __error__=\"\" | label_format level=\"\"",
+                  "refId": "A"
                 }
-              ]
+              ],
+              "title": "Recent Logs",
+              "type": "logs"
             }
-          ]
+          ],
+          "preload": false,
+          "refresh": "30s",
+          "schemaVersion": 42,
+          "tags": [],
+          "templating": {
+            "list": []
+          },
+          "time": {
+            "from": "now-3h",
+            "to": "now"
+          },
+          "timepicker": {},
+          "timezone": "browser",
+          "title": "Log Overview",
+          "uid": "log-overview"
         }

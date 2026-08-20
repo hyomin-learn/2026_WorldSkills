@@ -1,4 +1,3 @@
-# --------------------------- Key Pair ---------------------------
 resource "tls_private_key" "this" {
   algorithm = "RSA"
   rsa_bits  = 4096
@@ -15,7 +14,6 @@ resource "local_file" "this" {
   file_permission = "0400"
 }
 
-# --------------------------- AMI ---------------------------
 data "aws_ami" "amazon_linux_2023" {
   most_recent = true
   owners      = ["amazon"]
@@ -31,7 +29,6 @@ data "aws_ami" "amazon_linux_2023" {
   }
 }
 
-# ---------------------------Bastion EC2---------------------------
 resource "aws_instance" "bastion" {
   ami                         = data.aws_ami.amazon_linux_2023.id
   subnet_id                   = var.public_subnet_id
@@ -43,8 +40,6 @@ resource "aws_instance" "bastion" {
 
   user_data_replace_on_change = true
 
-  # 8GB 기본 볼륨은 dnf upgrade + docker + eksctl/kubectl/helm/k9s 설치에
-  # 부족해 디스크가 꽉 찹니다. 30GB로 확장.
   root_block_device {
     volume_size           = 30
     volume_type           = "gp3"
@@ -79,7 +74,6 @@ resource "aws_instance" "bastion" {
   }
 }
 
-# ---------------------------Elastic IP---------------------------
 resource "aws_eip" "bastion" {
   domain     = "vpc"
   instance   = aws_instance.bastion.id
@@ -87,15 +81,9 @@ resource "aws_eip" "bastion" {
   depends_on = [aws_instance.bastion]
 }
 
-# ---------------------------Bootstrap (EKS + workloads)---------------------------
-# SSH 로 접속해 01-autodeploy.sh 를 동기 실행합니다.
-#  - apply 가 배포 완료까지 기다립니다 (apply 성공 == 배포 완료)
-#  - 스크립트 출력이 terraform 로그로 실시간 스트리밍됩니다
-#  - 실패하면 apply 가 에러로 멈춥니다 (조용한 실패 방지)
 resource "null_resource" "bootstrap" {
   count = var.auto_deploy ? 1 : 0
 
-  # Bastion 이 교체되면 다시 실행
   triggers = {
     instance_id = aws_instance.bastion.id
   }
@@ -110,11 +98,9 @@ resource "null_resource" "bootstrap" {
 
   provisioner "remote-exec" {
     inline = [
-      # user_data(도구 설치, 이미지 push, S3 다운로드)가 끝날 때까지 대기
       "echo '>>> waiting for bastion bootstrap (cloud-init)...'",
       "sudo cloud-init status --wait || true",
       "test -f /home/ec2-user/o11y/01-autodeploy.sh || { echo '!!! bootstrap failed - see /var/log/bastion-bootstrap.log'; sudo tail -30 /var/log/bastion-bootstrap.log; exit 1; }",
-      # EKS 생성 + 워크로드 배포 (15~25분, 출력은 그대로 스트리밍)
       "bash /home/ec2-user/o11y/01-autodeploy.sh",
     ]
   }

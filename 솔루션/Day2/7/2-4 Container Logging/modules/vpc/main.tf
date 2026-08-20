@@ -1,5 +1,3 @@
-# ---------------------------VPC & Subnets---------------------------
-
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_hostnames = true
@@ -7,7 +5,6 @@ resource "aws_vpc" "main" {
   tags                 = { Name = "${var.project}-vpc" }
 }
 
-# Public subnets: internet-facing ALBs (o11y-app-alb, o11y-grafana-alb) land here.
 resource "aws_subnet" "public" {
   count                   = 2
   vpc_id                  = aws_vpc.main.id
@@ -21,7 +18,6 @@ resource "aws_subnet" "public" {
   }
 }
 
-# Private subnets: EKS managed node group runs here.
 resource "aws_subnet" "private" {
   count             = 2
   vpc_id            = aws_vpc.main.id
@@ -38,8 +34,6 @@ resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
   tags   = { Name = "${var.project}-igw" }
 }
-
-# ---------------------------NAT Gateway (per-AZ)---------------------------
 
 resource "aws_eip" "nat_a" {
   domain = "vpc"
@@ -64,8 +58,6 @@ resource "aws_nat_gateway" "main_c" {
   tags          = { Name = "${var.project}-ngw-c" }
   depends_on    = [aws_internet_gateway.main]
 }
-
-# ---------------------------Route Tables---------------------------
 
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id

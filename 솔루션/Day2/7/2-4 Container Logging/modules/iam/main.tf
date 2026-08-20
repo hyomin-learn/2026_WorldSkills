@@ -1,6 +1,3 @@
-#=============== bastion-role ===============
-# Admin role so the bastion can run eksctl (creates CFN stacks / IAM / EC2),
-# kubectl, helm, and push to ECR without per-service policies.
 resource "aws_iam_role" "bastion" {
   name = "${var.instance_name}-role"
 
