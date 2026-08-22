@@ -26,17 +26,3 @@ datasources:
         access: proxy
         url: http://prometheus-server.monitoring.svc
         isDefault: true
-dashboardProviders:
-  dashboardproviders.yaml:
-    apiVersion: 1
-    providers:
-      - name: wskorea26
-        orgId: 1
-        folder: ""
-        type: file
-        disableDeletion: false
-        editable: true
-        options:
-          path: /var/lib/grafana/dashboards/wskorea26
-dashboardsConfigMaps:
-  wskorea26: grafana-wskorea26-dashboard

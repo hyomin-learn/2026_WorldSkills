@@ -1,11 +1,17 @@
-FROM alpine:3.20 AS build
-RUN apk add --no-cache upx ca-certificates tzdata
-COPY book /book
-RUN chmod +x /book && upx --best --lzma /book
-FROM scratch
-COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=build /usr/share/zoneinfo /usr/share/zoneinfo
-COPY --from=build /book /book
+FROM alpine:3.20
+WORKDIR /app
+COPY --chown=appuser:appgroup --chmod=755 ./book /app/main
+RUN apk add --no-cache \
+    libc6-compat \
+    libstdc++ \
+    libgcc \
+    ca-certificates \
+    tzdata && \
+    cp /usr/share/zoneinfo/Asia/Seoul /etc/localtime && \
+    echo "Asia/Seoul" > /etc/timezone && \
+    addgroup -S appgroup && \
+    adduser -S appuser -G appgroup
 ENV TZ=Asia/Seoul
+USER appuser
 EXPOSE 8080
-ENTRYPOINT ["/book"]
+CMD ["/app/main"]
