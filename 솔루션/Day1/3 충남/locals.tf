@@ -1,5 +1,5 @@
 locals {
-  player_number = 101
+  player_number = var.player_number
 
   parameter = "wsc2026"
 

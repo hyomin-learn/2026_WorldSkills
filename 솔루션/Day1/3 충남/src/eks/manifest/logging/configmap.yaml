@@ -37,7 +37,7 @@ data:
     [FILTER]
         Name                lua
         Match               kube.*
-        script              status.lua
+        script              /fluent-bit/etc/status.lua
         call                enrich_access
 
     [FILTER]
@@ -74,6 +74,7 @@ data:
         Metric_Description  Application HTTP request duration seconds
         Value_Field         duration_seconds
         Bucket              0.1
+        Bucket              0.2
         Bucket              0.5
         Bucket              1
         Bucket              3
@@ -85,18 +86,31 @@ data:
         Label_Field         status_class
 
     [FILTER]
-        Name                modify
+        Name                rewrite_tag
         Match               kube.*
-        Remove              remote_addr
-        Remove              user_agent
+        Rule                $path ^/v1/book$ cloudwatch.book false
+
+    [FILTER]
+        Name                modify
+        Match               cloudwatch.book
+        Remove              time
+        Remove              timestamp
         Remove              stream
         Remove              logtag
+        Remove              log
+        Remove              remote_addr
+        Remove              user_agent
         Remove              duration_seconds
         Remove              status_class
+        Move_to_end         level
+        Move_to_end         path
+        Move_to_end         status
+        Move_to_end         duration
+        Move_to_end         method
 
     [OUTPUT]
         Name                cloudwatch_logs
-        Match               kube.*
+        Match               cloudwatch.book
         region              ap-northeast-2
         Log_Group_Name      /wsc2026/pod/log
         Log_Stream_Name     /wsc2026/app/log
@@ -119,72 +133,71 @@ data:
     [PARSER]
         Name                access_log
         Format              regex
-        Regex               ^(?<timestamp>\d{4}\/\d{2}\/\d{2} \d{2}\:\d{2}\:\d{2}) access method=(?<method>[^ ]+) path=(?<path>[^ ]+) status=(?<status>[^ ]+) duration=(?<duration>[^ ]+) remote_addr=(?<remote_addr>[^ ]+) user_agent="(?<user_agent>[^"]+)"
+        Regex               ^(?<timestamp>\d{4}\/\d{2}\/\d{2} \d{2}\:\d{2}\:\d{2}) access method=(?<method>[^ ]+) path=(?<path>[^ ]+) status=(?<status>[0-9]{3}) duration=(?<duration>[^ ]+) remote_addr=(?<remote_addr>[^ ]+) user_agent="(?<user_agent>[^"]*)"
         Time_Key            timestamp
         Time_Format         %Y/%m/%d %H:%M:%S
 
   status.lua: |
     function enrich_access(tag, timestamp, record)
-        local status = record["status"]
-        local path = record["path"]
+        local status = tonumber(record["status"])
 
-        if status ~= nil then
-            local code = tonumber(status)
-
-            if code ~= nil then
-                if code >= 200 and code < 400 then
-                    record["level"] = "INFO"
-                    record["status_class"] = "2xx"
-                elseif code >= 400 and code < 500 then
-                    record["level"] = "WARN"
-                    record["status_class"] = "4xx"
-                elseif code >= 500 then
-                    record["level"] = "ERROR"
-                    record["status_class"] = "5xx"
-                else
-                    record["level"] = "INFO"
-                    record["status_class"] = "other"
-                end
-            else
-                record["level"] = "INFO"
-                record["status_class"] = "other"
-            end
+        if status == nil then
+            record["level"] = "INFO"
+            record["status_class"] = "other"
+        elseif status >= 500 then
+            record["level"] = "ERROR"
+            record["status_class"] = "5xx"
+        elseif status >= 400 then
+            record["level"] = "WARN"
+            record["status_class"] = "4xx"
+        elseif status >= 300 then
+            record["level"] = "INFO"
+            record["status_class"] = "3xx"
+        elseif status >= 200 then
+            record["level"] = "INFO"
+            record["status_class"] = "2xx"
+        elseif status >= 100 then
+            record["level"] = "INFO"
+            record["status_class"] = "1xx"
         else
             record["level"] = "INFO"
             record["status_class"] = "other"
         end
 
         local duration = record["duration"]
+        local duration_seconds = 0
 
         if duration ~= nil then
             local value = string.match(duration, "^([0-9%.]+)ms$")
+
             if value ~= nil then
-                record["duration_seconds"] = tonumber(value) / 1000
+                duration_seconds = tonumber(value) / 1000
             else
                 value = string.match(duration, "^([0-9%.]+)s$")
+
                 if value ~= nil then
-                    record["duration_seconds"] = tonumber(value)
+                    duration_seconds = tonumber(value)
                 else
                     value = string.match(duration, "^([0-9%.]+)[uµ]s$")
+
                     if value ~= nil then
-                        record["duration_seconds"] = tonumber(value) / 1000000
+                        duration_seconds = tonumber(value) / 1000000
                     else
                         value = string.match(duration, "^([0-9%.]+)ns$")
+
                         if value ~= nil then
-                            record["duration_seconds"] = tonumber(value) / 1000000000
-                        else
-                            record["duration_seconds"] = 0
+                            duration_seconds = tonumber(value) / 1000000000
                         end
                     end
                 end
             end
-        else
-            record["duration_seconds"] = 0
         end
 
-        if path ~= nil and string.match(path, "^/delay") then
-            record["duration_seconds"] = 5
+        if record["path"] ~= nil and string.match(record["path"], "^/delay") then
+            duration_seconds = 5
         end
+
+        record["duration_seconds"] = duration_seconds
 
         return 1, timestamp, record
     end

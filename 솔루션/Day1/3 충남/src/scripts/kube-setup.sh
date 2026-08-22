@@ -107,8 +107,6 @@ helm upgrade -i prometheus prometheus-community/prometheus \
 
 sleep 30
 
-kubectl apply -f /home/ec2-user/eks/manifest/grafana/configmap.yaml
-
 eksctl create podidentityassociation \
   --region $REGION_CODE \
   --cluster $EKS_CLUSTER_NAME \

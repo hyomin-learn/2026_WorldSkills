@@ -10,13 +10,6 @@ service:
     service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
     service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
 
-sidecar:
-  dashboards:
-    enabled: true
-    label: grafana_dashboard
-    labelValue: "wsc2026"
-    watchMethod: WATCH
-
 grafana.ini:
   server:
     root_url: "%(protocol)s://%(domain)s:%(http_port)s/"
