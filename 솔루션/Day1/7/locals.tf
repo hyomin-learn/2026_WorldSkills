@@ -1,5 +1,5 @@
 locals {
-  player_number = "105"
+  player_number = var.player_number
 
   parameter = "unicorn"
 
@@ -391,7 +391,7 @@ locals {
         },
         {
           effect    = "Allow"
-          actions   = ["eks:Describe"]
+          actions   = ["eks:DescribeCluster"]
           resources = ["arn:aws:eks:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:cluster/${local.parameter}-eks-cluster"]
           conditions = []
         },

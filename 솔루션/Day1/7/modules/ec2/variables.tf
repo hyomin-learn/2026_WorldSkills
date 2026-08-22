@@ -97,5 +97,6 @@ variable "iam_policies" {
 }
 
 variable "player_number" {
-  type = number
+  description = "선수 비번호"
+  type        = string
 }
