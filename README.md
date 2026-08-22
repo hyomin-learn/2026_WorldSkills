@@ -3,6 +3,12 @@
 https://maddening-supernova-808.notion.site/Tech-Skills-3abe2d1e99b880afaf0ce0646ae5c9d1?source=copy_link
 ```
 
+<br>
+
+```
+https://quilt-fly-bea.notion.site/Architecture-3c4941cd5ec08022ac84c88a79465603
+```
+
 ---
 
 # Infra Setup
